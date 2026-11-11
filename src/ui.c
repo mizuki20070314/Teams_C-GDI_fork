@@ -1,6 +1,9 @@
 #include "app.h"
+#include "auth.h"
+#include "graph.h"
 
 #include <windowsx.h>
+#include <shellapi.h>
 #include <math.h>
 
 /* ------------------------------------------------------------------ */
@@ -1117,9 +1120,117 @@ static void DrawSettingsPage(HDC dc)
                      DT_LEFT | DT_VCENTER | DT_SINGLELINE);
     }
 
+    /* Account / Sign-in section */
+    {
+        int y = main_rect.top + Dpx(70);
+        RECT section = {main_rect.left + Dpx(16), y,
+                        main_rect.right - Dpx(16), y + Dpx(120)};
+        DrawRoundedRect(dc, section, Dpx(8), COL_PANEL_BG, COL_BORDER);
+
+        if (g_auth.state == AUTH_SIGNED_IN) {
+            DrawAvatar(dc, section.left + Dpx(32), section.top + Dpx(40),
+                       Dpx(24), COL_ACCENT, L"MS", TRUE);
+            {
+                RECT name_r = {section.left + Dpx(68), section.top + Dpx(16),
+                               section.right - Dpx(16), section.top + Dpx(40)};
+                DrawTextLine(dc, AuthGetDisplayName(), name_r, g_app.font_bold,
+                             COL_TEXT, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+            }
+            {
+                RECT email_r = {section.left + Dpx(68), section.top + Dpx(40),
+                                section.right - Dpx(16), section.top + Dpx(62)};
+                DrawTextLine(dc, AuthGetEmail(), email_r, g_app.font_small,
+                             COL_TEXT_MUTED, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+            }
+            {
+                RECT btn = {section.left + Dpx(68), section.top + Dpx(70),
+                            section.left + Dpx(180), section.top + Dpx(100)};
+                DrawRoundedRect(dc, btn, Dpx(8), RGB(229, 80, 80),
+                                RGB(229, 80, 80));
+                DrawTextLine(dc, L"Sign out", btn, g_app.font_bold,
+                             RGB(255, 255, 255),
+                             DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+            }
+        } else if (g_auth.state == AUTH_SIGNING_IN) {
+            {
+                RECT t = {section.left + Dpx(16), section.top + Dpx(12),
+                          section.right - Dpx(16), section.top + Dpx(36)};
+                DrawTextLine(dc, L"サインイン中...", t, g_app.font_bold, COL_TEXT,
+                             DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+            }
+            {
+                wchar_t code_text[128];
+                swprintf(code_text, 128, L"コード: %s", g_auth.user_code);
+                RECT c = {section.left + Dpx(16), section.top + Dpx(40),
+                          section.right - Dpx(16), section.top + Dpx(64)};
+                DrawTextLine(dc, code_text, c, g_app.font_large, COL_ACCENT,
+                             DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+            }
+            {
+                RECT u = {section.left + Dpx(16), section.top + Dpx(66),
+                          section.right - Dpx(16), section.top + Dpx(88)};
+                DrawTextLine(dc, g_auth.verification_uri, u, g_app.font_small,
+                             COL_TEXT_MUTED, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+            }
+            {
+                RECT btn = {section.left + Dpx(16), section.top + Dpx(90),
+                            section.left + Dpx(200), section.top + Dpx(116)};
+                DrawRoundedRect(dc, btn, Dpx(8), COL_ACCENT, COL_ACCENT);
+                DrawTextLine(dc, L"ブラウザを開く", btn, g_app.font_bold,
+                             RGB(255, 255, 255),
+                             DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+            }
+        } else if (g_auth.state == AUTH_ERROR) {
+            {
+                RECT t = {section.left + Dpx(16), section.top + Dpx(12),
+                          section.right - Dpx(16), section.top + Dpx(40)};
+                DrawTextLine(dc, L"サインインエラー", t, g_app.font_bold,
+                             RGB(229, 80, 80),
+                             DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+            }
+            {
+                RECT e = {section.left + Dpx(16), section.top + Dpx(40),
+                          section.right - Dpx(16), section.top + Dpx(80)};
+                DrawTextLine(dc, g_auth.error_message, e, g_app.font_small,
+                             COL_TEXT_MUTED, DT_LEFT | DT_TOP | DT_WORDBREAK);
+            }
+            {
+                RECT btn = {section.left + Dpx(16), section.top + Dpx(84),
+                            section.left + Dpx(180), section.top + Dpx(112)};
+                DrawRoundedRect(dc, btn, Dpx(8), COL_ACCENT, COL_ACCENT);
+                DrawTextLine(dc, L"再試行", btn, g_app.font_bold,
+                             RGB(255, 255, 255),
+                             DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+            }
+        } else {
+            {
+                RECT t = {section.left + Dpx(16), section.top + Dpx(12),
+                          section.right - Dpx(16), section.top + Dpx(36)};
+                DrawTextLine(dc, L"アカウント", t, g_app.font_bold, COL_TEXT,
+                             DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+            }
+            {
+                RECT btn = {section.left + Dpx(16), section.top + Dpx(44),
+                            section.left + Dpx(220), section.top + Dpx(76)};
+                DrawRoundedRect(dc, btn, Dpx(8), COL_ACCENT, COL_ACCENT);
+                DrawTextLine(dc, L"Microsoft でサインイン", btn, g_app.font_bold,
+                             RGB(255, 255, 255),
+                             DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+            }
+            {
+                RECT hint = {section.left + Dpx(16), section.top + Dpx(82),
+                             section.right - Dpx(16), section.top + Dpx(116)};
+                DrawTextLine(dc, L"デバイスコードフローを使用します。", hint,
+                             g_app.font_small, COL_TEXT_MUTED,
+                             DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+            }
+        }
+        y += Dpx(136);
+    }
+
+    /* Other settings items */
     {
         const wchar_t *items[] = {
-            L"👤  Account",
             L"🔔  Notifications",
             L"🎨  Appearance",
             L"🔒  Privacy",
@@ -1127,10 +1238,10 @@ static void DrawSettingsPage(HDC dc)
             L"ℹ  About"
         };
         int i;
-        int y = main_rect.top + Dpx(70);
-        for (i = 0; i < 6; ++i) {
-            RECT item = {main_rect.left + Dpx(16), y,
-                         main_rect.right - Dpx(16), y + Dpx(48)};
+        int yy = main_rect.top + Dpx(210);
+        for (i = 0; i < 5; ++i) {
+            RECT item = {main_rect.left + Dpx(16), yy,
+                         main_rect.right - Dpx(16), yy + Dpx(48)};
             DrawRoundedRect(dc, item, Dpx(8), COL_PANEL_BG, COL_BORDER);
             {
                 RECT text_rect = {item.left + Dpx(16), item.top, item.right - Dpx(16),
@@ -1144,7 +1255,7 @@ static void DrawSettingsPage(HDC dc)
                 DrawTextLine(dc, L"›", arrow, g_app.font_large, COL_TEXT_MUTED,
                              DT_CENTER | DT_VCENTER | DT_SINGLELINE);
             }
-            y += Dpx(56);
+            yy += Dpx(56);
         }
     }
 }
@@ -1229,6 +1340,11 @@ void UiHandleClick(int x, int y)
                 if (g_app.chats[i].unread > 0) {
                     g_app.chats[i].unread = 0;
                 }
+                /* fetch messages from Graph if signed in */
+                if (AuthIsSignedIn() && strncmp(g_app.chats[i].id, "g:", 2) == 0) {
+                    GraphFetchMessages(g_app.chats[i].id);
+                    g_app.message_scroll = 1000000;
+                }
                 /* update title */
                 {
                     int unread = 0, j;
@@ -1274,6 +1390,42 @@ void UiHandleClick(int x, int y)
                     if (g_app.calendar_month > 12) { g_app.calendar_month = 1; ++g_app.calendar_year; }
                     InvalidateRect(g_app.hwnd, NULL, FALSE);
                     return;
+                }
+            }
+            if (g_app.page == PAGE_SETTINGS) {
+                int sec_top = main_rect.top + Dpx(70);
+                int sec_left = main_rect.left + Dpx(16);
+                if (g_auth.state == AUTH_SIGNED_OUT) {
+                    RECT btn = {sec_left + Dpx(16), sec_top + Dpx(44),
+                                sec_left + Dpx(220), sec_top + Dpx(76)};
+                    if (x >= btn.left && x <= btn.right && y >= btn.top && y <= btn.bottom) {
+                        AuthStartSignIn();
+                        InvalidateRect(g_app.hwnd, NULL, FALSE);
+                        return;
+                    }
+                } else if (g_auth.state == AUTH_SIGNING_IN) {
+                    RECT btn = {sec_left + Dpx(16), sec_top + Dpx(90),
+                                sec_left + Dpx(200), sec_top + Dpx(116)};
+                    if (x >= btn.left && x <= btn.right && y >= btn.top && y <= btn.bottom) {
+                        ShellExecuteW(NULL, L"open", g_auth.verification_uri, NULL, NULL, SW_SHOWNORMAL);
+                        return;
+                    }
+                } else if (g_auth.state == AUTH_ERROR) {
+                    RECT btn = {sec_left + Dpx(16), sec_top + Dpx(84),
+                                sec_left + Dpx(180), sec_top + Dpx(112)};
+                    if (x >= btn.left && x <= btn.right && y >= btn.top && y <= btn.bottom) {
+                        AuthStartSignIn();
+                        InvalidateRect(g_app.hwnd, NULL, FALSE);
+                        return;
+                    }
+                } else if (g_auth.state == AUTH_SIGNED_IN) {
+                    RECT btn = {sec_left + Dpx(68), sec_top + Dpx(70),
+                                sec_left + Dpx(180), sec_top + Dpx(100)};
+                    if (x >= btn.left && x <= btn.right && y >= btn.top && y <= btn.bottom) {
+                        AuthSignOut();
+                        InvalidateRect(g_app.hwnd, NULL, FALSE);
+                        return;
+                    }
                 }
             }
             if (g_app.page == PAGE_TEAMS) {
@@ -1364,9 +1516,13 @@ void UiSendCurrentMessage(void)
     swprintf(time_text, 16, L"%02d:%02d", now.wHour, now.wMinute);
 
     DataAddMessage(chat_index, TRUE, L"You", time_text, text);
-    DataSaveLocalMessage(&g_app.chats[chat_index],
-                        &g_app.chats[chat_index].messages[
-                            g_app.chats[chat_index].message_count - 1]);
+    if (AuthIsSignedIn() && strncmp(g_app.chats[chat_index].id, "g:", 2) == 0) {
+        GraphSendMessage(g_app.chats[chat_index].id, text);
+    } else {
+        DataSaveLocalMessage(&g_app.chats[chat_index],
+                            &g_app.chats[chat_index].messages[
+                                g_app.chats[chat_index].message_count - 1]);
+    }
 
     SetWindowTextW(g_app.composer_edit, L"");
     g_app.message_scroll = 1000000;

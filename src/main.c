@@ -1,4 +1,5 @@
 #include "app.h"
+#include "auth.h"
 
 #include <windowsx.h>
 
@@ -14,11 +15,13 @@ static LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT message,
         g_app.selected_chat = 0;
         g_app.mouse_x = -1;
         g_app.mouse_y = -1;
+        AuthInitialize();
         DataInitialize();
         if (!UiInitialize(hwnd)) {
             return -1;
         }
         UiLayoutControls();
+        SetTimer(hwnd, 1, 1000, NULL);
         return 0;
 
     case WM_SIZE:
@@ -121,7 +124,18 @@ static LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT message,
         }
         return 0;
 
+    case WM_TIMER:
+        if (wparam == 1) {
+            AuthUpdatePolling();
+            if (g_auth.state == AUTH_SIGNED_IN && g_auth.user_name[0] == L'\0') {
+                AuthFetchProfile();
+            }
+            InvalidateRect(hwnd, NULL, FALSE);
+        }
+        return 0;
+
     case WM_DESTROY:
+        KillTimer(hwnd, 1);
         UiDestroy();
         PostQuitMessage(0);
         return 0;

@@ -10,6 +10,8 @@ add_executable(TeamsCGDI WIN32
     src/main.c
     src/data.c
     src/ui.c
+    src/auth.c
+    src/graph.c
 )
 
 target_compile_definitions(TeamsCGDI PRIVATE
@@ -24,6 +26,11 @@ target_link_libraries(TeamsCGDI PRIVATE
     user32
     gdi32
     shell32
+    winhttp
+    ws2_32
+    crypt32
+    advapi32
+    bcrypt
 )
 
 if(MSVC)

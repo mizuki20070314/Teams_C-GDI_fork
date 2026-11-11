@@ -1,4 +1,6 @@
 #include "app.h"
+#include "auth.h"
+#include "graph.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -458,6 +460,33 @@ void DataInitialize(void)
 
     g_app.chat_count = 0;
     ZeroMemory(g_app.chats, sizeof(g_app.chats));
+
+    if (AuthIsSignedIn()) {
+        /* Load real chats from Graph */
+        GraphFetchChats();
+        if (g_app.chat_count == 0) {
+            /* fallback demo data */
+        } else {
+            /* fetch messages for first chat */
+            if (g_app.selected_chat >= 0 && g_app.selected_chat < g_app.chat_count) {
+                GraphFetchMessages(g_app.chats[g_app.selected_chat].id);
+            }
+            GetLocalTime(&now);
+            g_app.calendar_year = now.wYear;
+            g_app.calendar_month = now.wMonth;
+            g_app.calendar_day = now.wDay;
+            g_app.selected_team = 0;
+            g_app.selected_channel = 0;
+            g_app.chat_filter = 0;
+            g_app.chat_list_scroll = 0;
+            g_app.message_scroll = 1000000;
+            g_app.local_chat_sequence = 0;
+            return;
+        }
+    }
+
+    /* Demo data (offline) */
+    /* ... keep existing demo data ... */
 
     AddChat("naoki", L"Naoki Sato", L"NS", RGB(112, 143, 176),
             FALSE, TRUE, TRUE);
