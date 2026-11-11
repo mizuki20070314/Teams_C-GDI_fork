@@ -468,6 +468,26 @@ static void DrawChatList(HDC dc)
 
         y += ChatItemHeight();
     }
+
+    /* Scrollbar */
+    {
+        int total = g_app.chat_count * ChatItemHeight();
+        int viewport = g_app.height - Dpx(70);
+        if (total > viewport && viewport > 0) {
+            int track_top = Dpx(70);
+            int track_height = viewport;
+            int thumb_height = track_height * viewport / total;
+            if (thumb_height < Dpx(20)) thumb_height = Dpx(20);
+            int thumb_top = track_top + (track_height - thumb_height) *
+                            g_app.chat_list_scroll / (total - viewport);
+            RECT track = {rect.right - Dpx(6), track_top, rect.right - Dpx(2),
+                          track_top + track_height};
+            RECT thumb = {rect.right - Dpx(6), thumb_top, rect.right - Dpx(2),
+                          thumb_top + thumb_height};
+            FillRectColor(dc, track, COL_BORDER);
+            DrawRoundedRect(dc, thumb, Dpx(3), COL_TEXT_MUTED, COL_TEXT_MUTED);
+        }
+    }
 }
 
 static void DrawConversation(HDC dc)
