@@ -105,6 +105,19 @@ static LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT message,
                 SendMessageW(g_app.search_edit, EM_SETSEL, 0, -1);
                 return 0;
             }
+            if (wparam >= '1' && wparam <= '7') {
+                g_app.page = (NavPage)(wparam - '1');
+                if (g_app.page == PAGE_CHAT && g_app.selected_chat < 0 &&
+                    g_app.chat_count > 0) {
+                    g_app.selected_chat = 0;
+                }
+                InvalidateRect(hwnd, NULL, FALSE);
+                return 0;
+            }
+        }
+        if (wparam == VK_ESCAPE) {
+            SetFocus(hwnd);
+            return 0;
         }
         return 0;
 

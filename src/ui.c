@@ -83,9 +83,14 @@ static void DrawTextLine(HDC dc, const wchar_t *text, RECT rect,
     SelectObject(dc, old_font);
 }
 
-/* ------------------------------------------------------------------ */
-/* Icon drawing                                                         */
-/* ------------------------------------------------------------------ */
+static int TextWidth(HDC dc, HFONT font, const wchar_t *text)
+{
+    SIZE size;
+    HGDIOBJ old_font = SelectObject(dc, font);
+    GetTextExtentPoint32W(dc, text, (int)wcslen(text), &size);
+    SelectObject(dc, old_font);
+    return size.cx;
+}
 
 static void DrawIconNav(HDC dc, int cx, int cy, NavPage page,
                         COLORREF color)
@@ -529,6 +534,30 @@ static void DrawConversation(HDC dc)
             }
         }
 
+        /* tabs */
+        {
+            const wchar_t *tabs[] = {L"Chat", L"Shared", L"Organization", L"Activity"};
+            int tab_x = main_rect.left + Dpx(64);
+            int i;
+            for (i = 0; i < 4; ++i) {
+                int tw = TextWidth(dc, g_app.font_bold, tabs[i]) + Dpx(24);
+                RECT tab = {tab_x, main_rect.top + ConversationHeaderHeight() - Dpx(30),
+                            tab_x + tw, main_rect.top + ConversationHeaderHeight() - Dpx(4)};
+                if (i == 0) {
+                    /* underline */
+                    RECT ul = {tab.left + Dpx(8), tab.bottom - Dpx(2),
+                               tab.right - Dpx(8), tab.bottom};
+                    FillRectColor(dc, ul, COL_ACCENT);
+                    DrawTextLine(dc, tabs[i], tab, g_app.font_bold, COL_ACCENT,
+                                 DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+                } else {
+                    DrawTextLine(dc, tabs[i], tab, g_app.font_regular, COL_TEXT_MUTED,
+                                 DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+                }
+                tab_x += tw + Dpx(4);
+            }
+        }
+
         /* divider */
         {
             RECT line = {main_rect.left, main_rect.top + ConversationHeaderHeight() - 1,
@@ -644,7 +673,37 @@ static void DrawConversation(HDC dc)
                          msg->mine ? DT_RIGHT : DT_LEFT);
         }
 
+        if (!msg->mine) {
+            RECT react = {bubble_rect.left, bubble_rect.bottom + Dpx(16),
+                          bubble_rect.left + Dpx(52), bubble_rect.bottom + Dpx(34)};
+            DrawRoundedRect(dc, react, Dpx(10), COL_PANEL_BG, COL_BORDER);
+            DrawTextLine(dc, L"👍 2", react, g_app.font_small, COL_TEXT_MUTED,
+                         DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        }
+
         y = bubble_rect.bottom + Dpx(20);
+        if (!msg->mine) y += Dpx(18);
+    }
+
+    /* Typing indicator */
+    {
+        wchar_t comp[MESSAGE_TEXT_CAP];
+        GetWindowTextW(g_app.composer_edit, comp, MESSAGE_TEXT_CAP);
+        if (comp[0] != L'\0' && chat->message_count > 0) {
+            int iy = y;
+            RECT bubble = {main_rect.left + Dpx(16), iy,
+                           main_rect.left + Dpx(16) + Dpx(60), iy + Dpx(30)};
+            if (bubble.bottom <= content_bottom) {
+                DrawRoundedRect(dc, bubble, Dpx(12), COL_MESSAGE_OTHER,
+                                COL_MESSAGE_OTHER);
+                {
+                    RECT tr = {bubble.left + Dpx(12), bubble.top + Dpx(6),
+                               bubble.right - Dpx(12), bubble.bottom - Dpx(6)};
+                    DrawTextLine(dc, L"…", tr, g_app.font_large, COL_TEXT_MUTED,
+                                 DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+                }
+            }
+        }
     }
 
     /* Composer area */
@@ -1154,6 +1213,9 @@ void UiHandleCommand(HWND hwnd, WPARAM wparam, LPARAM lparam)
 
     if (control_id == IDC_GLOBAL_SEARCH) {
         GetWindowTextW(g_app.search_edit, g_app.search_text, 128);
+        if (_wcsicmp(g_app.search_text, L"Search") == 0) {
+            g_app.search_text[0] = L'\0';
+        }
         InvalidateRect(g_app.hwnd, NULL, FALSE);
     }
 }
@@ -1198,8 +1260,28 @@ void UiCreateLocalChat(void)
 LRESULT CALLBACK SearchEditProc(HWND hwnd, UINT message, WPARAM wparam,
                                 LPARAM lparam)
 {
+    if (message == WM_SETFOCUS) {
+        wchar_t text[128];
+        GetWindowTextW(hwnd, text, 128);
+        if (_wcsicmp(text, L"Search") == 0) {
+            SetWindowTextW(hwnd, L"");
+        }
+    }
+    if (message == WM_KILLFOCUS) {
+        wchar_t text[128];
+        GetWindowTextW(hwnd, text, 128);
+        if (text[0] == L'\0') {
+            SetWindowTextW(hwnd, L"Search");
+        }
+    }
     if (message == WM_KEYDOWN && wparam == VK_RETURN) {
         SetFocus(g_app.composer_edit);
+        return 0;
+    }
+    if (message == WM_KEYDOWN && wparam == VK_ESCAPE) {
+        SetWindowTextW(hwnd, L"Search");
+        g_app.search_text[0] = L'\0';
+        InvalidateRect(g_app.hwnd, NULL, FALSE);
         return 0;
     }
     return CallWindowProcW(g_app.search_proc, hwnd, message, wparam, lparam);
