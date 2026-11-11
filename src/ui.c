@@ -381,6 +381,13 @@ static void DrawChatList(HDC dc)
         RECT header = {rect.left + Dpx(16), Dpx(16), rect.right - Dpx(16), Dpx(52)};
         DrawTextLine(dc, L"Chat", header, g_app.font_large, COL_TEXT,
                      DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        /* New chat button */
+        {
+            RECT btn = {rect.right - Dpx(44), Dpx(20), rect.right - Dpx(12), Dpx(48)};
+            DrawRoundedRect(dc, btn, Dpx(8), COL_ACCENT, COL_ACCENT);
+            DrawTextLine(dc, L"+", btn, g_app.font_large, RGB(255,255,255),
+                         DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        }
     }
 
     /* divider */
@@ -395,6 +402,15 @@ static void DrawChatList(HDC dc)
         Chat *chat = &g_app.chats[i];
         int item_top = y;
         int item_bottom = y + ChatItemHeight();
+
+        /* Filter by search text */
+        if (g_app.search_text[0] != L'\0') {
+            if (wcsstr(chat->title, g_app.search_text) == NULL &&
+                wcsstr(chat->preview, g_app.search_text) == NULL) {
+                y += ChatItemHeight();
+                continue;
+            }
+        }
 
         if (item_bottom < Dpx(57) || item_top > g_app.height) {
             y += ChatItemHeight();
@@ -528,6 +544,30 @@ static void DrawConversation(HDC dc)
     {
         RECT bg = {main_rect.left, content_top, main_rect.right, content_bottom};
         FillRectColor(dc, bg, COL_PANEL_BG);
+    }
+
+    /* Compute total message height for scroll clamping */
+    {
+        int total = Dpx(8);
+        int mi;
+        for (mi = 0; mi < chat->message_count; ++mi) {
+            ChatMessage *m = &chat->messages[mi];
+            int bw = (main_rect.right - main_rect.left) * 2 / 3;
+            int mtw = bw - Dpx(24);
+            RECT tr = {0, 0, mtw, 0};
+            HDC mdc = dc;
+            HGDIOBJ of = SelectObject(mdc, g_app.font_regular);
+            DrawTextW(mdc, m->text, -1, &tr, DT_CALCRECT | DT_WORDBREAK | DT_NOPREFIX);
+            SelectObject(mdc, of);
+            total += (tr.bottom - tr.top < Dpx(18) ? Dpx(18) : (tr.bottom - tr.top)) + Dpx(24);
+            if (!m->mine) total += Dpx(14);
+        }
+        {
+            int viewport = content_bottom - content_top;
+            int max_scroll = total - viewport;
+            if (max_scroll < 0) max_scroll = 0;
+            if (g_app.message_scroll > max_scroll) g_app.message_scroll = max_scroll;
+        }
     }
 
     y = content_top + Dpx(8) - g_app.message_scroll;
@@ -665,8 +705,41 @@ static void DrawPlaceholderPage(HDC dc, const wchar_t *title,
 
 static void DrawActivityPage(HDC dc)
 {
-    DrawPlaceholderPage(dc, L"Activity",
-        L"通知・メンション・リアクションは今後の実装で接続します。");
+    RECT main_rect = MainRect();
+    FillRectColor(dc, main_rect, COL_PANEL_BG);
+
+    {
+        RECT title = {main_rect.left + Dpx(24), main_rect.top + Dpx(20),
+                      main_rect.right - Dpx(24), main_rect.top + Dpx(56)};
+        DrawTextLine(dc, L"Activity", title, g_app.font_large, COL_TEXT,
+                     DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    }
+
+    {
+        const wchar_t *items[] = {
+            L"Naoki Sato がメッセージを送信しました",
+            L"Product launch で新しい投稿があります",
+            L"Alex Morgan があなたをメンションしました",
+            L"IT Helpdesk がチケットを更新しました",
+            L"Weekly sync の議事メモが共有されました"
+        };
+        int i;
+        int y = main_rect.top + Dpx(70);
+        for (i = 0; i < 5; ++i) {
+            RECT item = {main_rect.left + Dpx(16), y,
+                         main_rect.right - Dpx(16), y + Dpx(56)};
+            DrawRoundedRect(dc, item, Dpx(8), COL_PANEL_BG, COL_BORDER);
+            DrawAvatar(dc, item.left + Dpx(24), (item.top + item.bottom) / 2,
+                       Dpx(18), RGB(86, 114, 245), L"A", (i % 2 == 0));
+            {
+                RECT text_rect = {item.left + Dpx(52), item.top + Dpx(8),
+                                  item.right - Dpx(16), item.bottom - Dpx(8)};
+                DrawTextLine(dc, items[i], text_rect, g_app.font_regular, COL_TEXT,
+                             DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+            }
+            y += Dpx(64);
+        }
+    }
 }
 
 static void DrawTeamsPage(HDC dc)
@@ -684,6 +757,12 @@ static void DrawTeamsPage(HDC dc)
     {
         const wchar_t *teams[] = {L"Product launch", L"UX Design",
                                    L"Engineering", L"General"};
+        const wchar_t *channels[][4] = {
+            {L"General", L"Marketing", L"Design review", NULL},
+            {L"General", L"Research", NULL, NULL},
+            {L"General", L"Builds", L"Incidents", NULL},
+            {L"General", NULL, NULL, NULL}
+        };
         int i;
         int y = main_rect.top + Dpx(70);
         for (i = 0; i < 4; ++i) {
@@ -702,14 +781,144 @@ static void DrawTeamsPage(HDC dc)
                              DT_LEFT | DT_VCENTER | DT_SINGLELINE);
             }
             y += Dpx(52);
+            if (i == g_app.selected_team) {
+                int ci = 0;
+                while (channels[i][ci] != NULL) {
+                    RECT ch = {main_rect.left + Dpx(40), y,
+                               main_rect.right - Dpx(16), y + Dpx(36)};
+                    if (ci == g_app.selected_channel) {
+                        DrawRoundedRect(dc, ch, Dpx(6), COL_RAIL_SELECTED,
+                                        COL_RAIL_SELECTED);
+                    }
+                    {
+                        RECT chname = {ch.left + Dpx(20), ch.top, ch.right, ch.bottom};
+                        DrawTextLine(dc, channels[i][ci], chname, g_app.font_regular,
+                                     COL_TEXT_MUTED,
+                                     DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+                    }
+                    y += Dpx(38);
+                    ++ci;
+                }
+                y += Dpx(8);
+            }
         }
     }
 }
 
 static void DrawCalendarPage(HDC dc)
 {
-    DrawPlaceholderPage(dc, L"Calendar",
-        L"予定表の同期はMicrosoft Graph連携後に実装します。");
+    RECT main_rect = MainRect();
+    FillRectColor(dc, main_rect, COL_PANEL_BG);
+
+    /* Title */
+    {
+        wchar_t title[64];
+        swprintf(title, 64, L"%d年 %d月", g_app.calendar_year, g_app.calendar_month);
+        RECT t = {main_rect.left + Dpx(24), main_rect.top + Dpx(20),
+                  main_rect.right - Dpx(24), main_rect.top + Dpx(56)};
+        DrawTextLine(dc, title, t, g_app.font_large, COL_TEXT,
+                     DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    }
+
+    /* Navigation buttons */
+    {
+        RECT prev = {main_rect.right - Dpx(120), main_rect.top + Dpx(24),
+                     main_rect.right - Dpx(80), main_rect.top + Dpx(52)};
+        RECT next = {main_rect.right - Dpx(70), main_rect.top + Dpx(24),
+                     main_rect.right - Dpx(30), main_rect.top + Dpx(52)};
+        DrawTextLine(dc, L"◀", prev, g_app.font_large, COL_TEXT_MUTED,
+                     DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        DrawTextLine(dc, L"▶", next, g_app.font_large, COL_TEXT_MUTED,
+                     DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+    }
+
+    /* Weekday header */
+    {
+        const wchar_t *days[] = {L"日", L"月", L"火", L"水", L"木", L"金", L"土"};
+        int i;
+        int cell_w = (main_rect.right - main_rect.left - Dpx(48)) / 7;
+        int x0 = main_rect.left + Dpx(24);
+        int y = main_rect.top + Dpx(70);
+        for (i = 0; i < 7; ++i) {
+            RECT r = {x0 + i * cell_w, y, x0 + (i + 1) * cell_w, y + Dpx(28)};
+            DrawTextLine(dc, days[i], r, g_app.font_bold, COL_TEXT_MUTED,
+                         DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        }
+    }
+
+    /* Day grid */
+    {
+        int cell_w = (main_rect.right - main_rect.left - Dpx(48)) / 7;
+        int cell_h = Dpx(64);
+        int x0 = main_rect.left + Dpx(24);
+        int y0 = main_rect.top + Dpx(100);
+        int first_weekday;
+        int days_in_month;
+        int day;
+        SYSTEMTIME st;
+        /* compute first weekday of month */
+        {
+            st.wYear = (WORD)g_app.calendar_year;
+            st.wMonth = (WORD)g_app.calendar_month;
+            st.wDay = 1;
+            st.wHour = 0; st.wMinute = 0; st.wSecond = 0; st.wMilliseconds = 0;
+            /* Use FileTime conversion */
+            {
+                FILETIME ft;
+                if (SystemTimeToFileTime(&st, &ft)) {
+                    /* weekday: compute via GetDateFormat? use a simple known: 2026-01-01 is Thursday */
+                }
+            }
+        }
+        /* Simple: use GetDateFormat to format? Instead compute with mktime-like via Windows */
+        {
+            /* Use time_t via _mkgmtime not available in MinGW? Use FileTimeToSystemTime roundtrip not needed.
+               Compute weekday using Zeller-like formula */
+            int y = g_app.calendar_year;
+            int m = g_app.calendar_month;
+            if (m < 3) { m += 12; --y; }
+            first_weekday = (1 + (13 * (m + 1)) / 5 + y + y / 4 - y / 100 + y / 400) % 7;
+            /* Convert: above gives 0=Saturday? Adjust: standard Zeller: 0=Saturday. Convert to 0=Sunday */
+            first_weekday = (first_weekday + 1) % 7;
+        }
+        /* days in month */
+        {
+            static const int dim[] = {31,28,31,30,31,30,31,31,30,31,30,31};
+            days_in_month = dim[g_app.calendar_month - 1];
+            if (g_app.calendar_month == 2) {
+                int yy = g_app.calendar_year;
+                if ((yy % 4 == 0 && yy % 100 != 0) || (yy % 400 == 0)) {
+                    days_in_month = 29;
+                }
+            }
+        }
+
+        for (day = 1; day <= days_in_month; ++day) {
+            int idx = first_weekday + (day - 1);
+            int row = idx / 7;
+            int col = idx % 7;
+            int cx = x0 + col * cell_w;
+            int cy = y0 + row * cell_h;
+            RECT cell = {cx, cy, cx + cell_w, cy + cell_h};
+            if (day == g_app.calendar_day) {
+                DrawRoundedRect(dc, cell, Dpx(8), COL_ACCENT, COL_ACCENT);
+                {
+                    wchar_t dtext[8];
+                    swprintf(dtext, 8, L"%d", day);
+                    RECT dr = cell;
+                    DrawTextLine(dc, dtext, dr, g_app.font_bold,
+                                 RGB(255,255,255),
+                                 DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+                }
+            } else {
+                wchar_t dtext[8];
+                swprintf(dtext, 8, L"%d", day);
+                RECT dr = cell;
+                DrawTextLine(dc, dtext, dr, g_app.font_regular, COL_TEXT,
+                             DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+            }
+        }
+    }
 }
 
 static void DrawCallsPage(HDC dc)
@@ -720,8 +929,40 @@ static void DrawCallsPage(HDC dc)
 
 static void DrawFilesPage(HDC dc)
 {
-    DrawPlaceholderPage(dc, L"Files",
-        L"ファイル一覧・共有はOneDrive/SharePoint連携後に実装します。");
+    RECT main_rect = MainRect();
+    FillRectColor(dc, main_rect, COL_PANEL_BG);
+
+    {
+        RECT title = {main_rect.left + Dpx(24), main_rect.top + Dpx(20),
+                      main_rect.right - Dpx(24), main_rect.top + Dpx(56)};
+        DrawTextLine(dc, L"Files", title, g_app.font_large, COL_TEXT,
+                     DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    }
+
+    {
+        const wchar_t *files[] = {
+            L"📄  Review deck.pptx",
+            L"📊  Q4 metrics.xlsx",
+            L"📝  Meeting notes.docx",
+            L"🖼  Design draft.png",
+            L"📁  Shared documents"
+        };
+        int i;
+        int y = main_rect.top + Dpx(70);
+        for (i = 0; i < 5; ++i) {
+            RECT item = {main_rect.left + Dpx(16), y,
+                         main_rect.right - Dpx(16), y + Dpx(44)};
+            if (i % 2 == 0) {
+                FillRectColor(dc, item, COL_RAIL_SELECTED);
+            }
+            {
+                RECT text_rect = {item.left + Dpx(16), item.top, item.right, item.bottom};
+                DrawTextLine(dc, files[i], text_rect, g_app.font_regular, COL_TEXT,
+                             DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+            }
+            y += Dpx(48);
+        }
+    }
 }
 
 static void DrawSettingsPage(HDC dc)
@@ -792,6 +1033,11 @@ void UiHandleClick(int x, int y)
     }
 
     if (x >= NavWidth() && x < NavWidth() + ChatListWidth()) {
+        /* New chat button */
+        if (y >= Dpx(20) && y <= Dpx(48) && x >= NavWidth() + ChatListWidth() - Dpx(44)) {
+            UiCreateLocalChat();
+            return;
+        }
         int item_height = ChatItemHeight();
         int top = Dpx(70) - g_app.chat_list_scroll;
         int i;
@@ -801,7 +1047,7 @@ void UiHandleClick(int x, int y)
             if (y >= item_top && y < item_bottom) {
                 g_app.selected_chat = i;
                 g_app.page = PAGE_CHAT;
-                g_app.message_scroll = 0;
+                g_app.message_scroll = 1000000;
                 if (g_app.chats[i].unread > 0) {
                     g_app.chats[i].unread = 0;
                 }
@@ -825,16 +1071,54 @@ void UiHandleClick(int x, int y)
                 UiSendCurrentMessage();
                 return;
             }
+            if (g_app.page == PAGE_CALENDAR) {
+                RECT prev = {main_rect.right - Dpx(120), main_rect.top + Dpx(24),
+                             main_rect.right - Dpx(80), main_rect.top + Dpx(52)};
+                RECT next = {main_rect.right - Dpx(70), main_rect.top + Dpx(24),
+                             main_rect.right - Dpx(30), main_rect.top + Dpx(52)};
+                if (x >= prev.left && x <= prev.right && y >= prev.top && y <= prev.bottom) {
+                    --g_app.calendar_month;
+                    if (g_app.calendar_month < 1) { g_app.calendar_month = 12; --g_app.calendar_year; }
+                    InvalidateRect(g_app.hwnd, NULL, FALSE);
+                    return;
+                }
+                if (x >= next.left && x <= next.right && y >= next.top && y <= next.bottom) {
+                    ++g_app.calendar_month;
+                    if (g_app.calendar_month > 12) { g_app.calendar_month = 1; ++g_app.calendar_year; }
+                    InvalidateRect(g_app.hwnd, NULL, FALSE);
+                    return;
+                }
+            }
             if (g_app.page == PAGE_TEAMS) {
+                const wchar_t *channels[][4] = {
+                    {L"General", L"Marketing", L"Design review", NULL},
+                    {L"General", L"Research", NULL, NULL},
+                    {L"General", L"Builds", L"Incidents", NULL},
+                    {L"General", NULL, NULL, NULL}
+                };
                 int i;
                 int item_y = main_rect.top + Dpx(70);
                 for (i = 0; i < 4; ++i) {
                     if (y >= item_y && y < item_y + Dpx(48)) {
                         g_app.selected_team = i;
+                        g_app.selected_channel = 0;
                         InvalidateRect(g_app.hwnd, NULL, FALSE);
                         return;
                     }
                     item_y += Dpx(52);
+                    if (i == g_app.selected_team) {
+                        int ci = 0;
+                        while (channels[i][ci] != NULL) {
+                            if (y >= item_y && y < item_y + Dpx(36)) {
+                                g_app.selected_channel = ci;
+                                InvalidateRect(g_app.hwnd, NULL, FALSE);
+                                return;
+                            }
+                            item_y += Dpx(38);
+                            ++ci;
+                        }
+                        item_y += Dpx(8);
+                    }
                 }
             }
         }
@@ -869,6 +1153,7 @@ void UiHandleCommand(HWND hwnd, WPARAM wparam, LPARAM lparam)
     (void)lparam;
 
     if (control_id == IDC_GLOBAL_SEARCH) {
+        GetWindowTextW(g_app.search_edit, g_app.search_text, 128);
         InvalidateRect(g_app.hwnd, NULL, FALSE);
     }
 }
@@ -894,7 +1179,7 @@ void UiSendCurrentMessage(void)
                             g_app.chats[chat_index].message_count - 1]);
 
     SetWindowTextW(g_app.composer_edit, L"");
-    g_app.message_scroll = 0;
+    g_app.message_scroll = 1000000;
     InvalidateRect(g_app.hwnd, NULL, FALSE);
 }
 

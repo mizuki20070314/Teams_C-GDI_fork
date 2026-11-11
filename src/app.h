@@ -75,6 +75,7 @@ typedef struct AppState {
     int selected_chat;
     int chat_count;
     int chat_filter;
+    wchar_t search_text[128];
     int chat_list_scroll;
     int message_scroll;
     int selected_team;
