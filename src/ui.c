@@ -671,6 +671,13 @@ static void DrawConversation(HDC dc)
             DrawTextLine(dc, msg->time, time_rect, g_app.font_small,
                          COL_TEXT_MUTED,
                          msg->mine ? DT_RIGHT : DT_LEFT);
+            if (msg->mine) {
+                /* delivery status */
+                RECT st = {bubble_rect.right - Dpx(28), time_rect.top,
+                           bubble_rect.right, time_rect.bottom};
+                DrawTextLine(dc, L"✓✓", st, g_app.font_small,
+                             RGB(86, 114, 245), DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
+            }
         }
 
         if (!msg->mine) {
@@ -740,27 +747,7 @@ static void DrawConversation(HDC dc)
     }
 }
 
-static void DrawPlaceholderPage(HDC dc, const wchar_t *title,
-                                const wchar_t *subtitle)
-{
-    RECT main_rect = MainRect();
-    int cx = (main_rect.left + main_rect.right) / 2;
-    int cy = (main_rect.top + main_rect.bottom) / 2;
-    (void)cx;
-
-    FillRectColor(dc, main_rect, COL_PANEL_BG);
-    {
-        RECT t = {main_rect.left, cy - Dpx(40), main_rect.right, cy};
-        DrawTextLine(dc, title, t, g_app.font_large, COL_TEXT,
-                     DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-    }
-    {
-        RECT s = {main_rect.left + Dpx(40), cy, main_rect.right - Dpx(40),
-                  cy + Dpx(60)};
-        DrawTextLine(dc, subtitle, s, g_app.font_regular, COL_TEXT_MUTED,
-                     DT_CENTER | DT_VCENTER | DT_WORDBREAK);
-    }
-}
+/* (placeholder page helper removed) */
 
 static void DrawActivityPage(HDC dc)
 {
@@ -982,8 +969,82 @@ static void DrawCalendarPage(HDC dc)
 
 static void DrawCallsPage(HDC dc)
 {
-    DrawPlaceholderPage(dc, L"Calls",
-        L"通話・会議機能はリアルタイム通信の設計後に実装します。");
+    RECT main_rect = MainRect();
+    FillRectColor(dc, main_rect, COL_PANEL_BG);
+
+    {
+        RECT title = {main_rect.left + Dpx(24), main_rect.top + Dpx(20),
+                      main_rect.right - Dpx(24), main_rect.top + Dpx(56)};
+        DrawTextLine(dc, L"Calls", title, g_app.font_large, COL_TEXT,
+                     DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    }
+
+    /* Dialer */
+    {
+        int cx = (main_rect.left + main_rect.right) / 2;
+        int cy = main_rect.top + Dpx(120);
+        RECT display = {cx - Dpx(140), cy, cx + Dpx(140), cy + Dpx(40)};
+        DrawRoundedRect(dc, display, Dpx(8), COL_COMPOSER_BG, COL_BORDER);
+        DrawTextLine(dc, L"+1 (555) 010-2030", display, g_app.font_regular,
+                     COL_TEXT, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+
+        {
+            const wchar_t *keys[] = {L"1", L"2", L"3", L"4", L"5", L"6",
+                                     L"7", L"8", L"9", L"*", L"0", L"#"};
+            int i;
+            int row, col;
+            int btn_size = Dpx(64);
+            int gap = Dpx(12);
+            int grid_top = cy + Dpx(60);
+            int grid_left = cx - (3 * btn_size + 2 * gap) / 2;
+            for (i = 0; i < 12; ++i) {
+                row = i / 3;
+                col = i % 3;
+                RECT btn = {grid_left + col * (btn_size + gap),
+                            grid_top + row * (btn_size + gap),
+                            grid_left + col * (btn_size + gap) + btn_size,
+                            grid_top + row * (btn_size + gap) + btn_size};
+                DrawCircle(dc, (btn.left + btn.right) / 2,
+                           (btn.top + btn.bottom) / 2, btn_size / 2 - Dpx(2),
+                           COL_RAIL_SELECTED);
+                DrawTextLine(dc, keys[i], btn, g_app.font_large, COL_TEXT,
+                             DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+            }
+        }
+
+        /* Call button */
+        {
+            int cx2 = cx;
+            int cy2 = cy + Dpx(60) + 4 * (Dpx(64) + Dpx(12)) + Dpx(20);
+            RECT call_btn = {cx2 - Dpx(40), cy2, cx2 + Dpx(40), cy2 + Dpx(80)};
+            DrawCircle(dc, cx2, cy2 + Dpx(40), Dpx(36), RGB(103, 194, 58));
+            DrawTextLine(dc, L"📞", call_btn, g_app.font_large,
+                         RGB(255, 255, 255),
+                         DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        }
+    }
+
+    /* Recent calls */
+    {
+        int rx = main_rect.left + (main_rect.right - main_rect.left) / 2 + Dpx(200);
+        if (rx + Dpx(280) > main_rect.right) rx = main_rect.right - Dpx(300);
+        RECT rt = {rx, main_rect.top + Dpx(70), rx + Dpx(280),
+                   main_rect.top + Dpx(100)};
+        DrawTextLine(dc, L"Recent", rt, g_app.font_bold, COL_TEXT,
+                     DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        {
+            const wchar_t *recent[] = {L"Naoki Sato  10:16", L"Alex Morgan  昨日",
+                                       L"IT Helpdesk  火曜日"};
+            int i;
+            int ry = main_rect.top + Dpx(100);
+            for (i = 0; i < 3; ++i) {
+                RECT r = {rx, ry, rx + Dpx(280), ry + Dpx(32)};
+                DrawTextLine(dc, recent[i], r, g_app.font_regular, COL_TEXT,
+                             DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+                ry += Dpx(36);
+            }
+        }
+    }
 }
 
 static void DrawFilesPage(HDC dc)
@@ -1026,8 +1087,46 @@ static void DrawFilesPage(HDC dc)
 
 static void DrawSettingsPage(HDC dc)
 {
-    DrawPlaceholderPage(dc, L"Settings",
-        L"アカウント設定・テーマ・通知設定は今後の実装予定です。");
+    RECT main_rect = MainRect();
+    FillRectColor(dc, main_rect, COL_PANEL_BG);
+
+    {
+        RECT title = {main_rect.left + Dpx(24), main_rect.top + Dpx(20),
+                      main_rect.right - Dpx(24), main_rect.top + Dpx(56)};
+        DrawTextLine(dc, L"Settings", title, g_app.font_large, COL_TEXT,
+                     DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    }
+
+    {
+        const wchar_t *items[] = {
+            L"👤  Account",
+            L"🔔  Notifications",
+            L"🎨  Appearance",
+            L"🔒  Privacy",
+            L"⌨  Keyboard shortcuts",
+            L"ℹ  About"
+        };
+        int i;
+        int y = main_rect.top + Dpx(70);
+        for (i = 0; i < 6; ++i) {
+            RECT item = {main_rect.left + Dpx(16), y,
+                         main_rect.right - Dpx(16), y + Dpx(48)};
+            DrawRoundedRect(dc, item, Dpx(8), COL_PANEL_BG, COL_BORDER);
+            {
+                RECT text_rect = {item.left + Dpx(16), item.top, item.right - Dpx(16),
+                                  item.bottom};
+                DrawTextLine(dc, items[i], text_rect, g_app.font_regular, COL_TEXT,
+                             DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+            }
+            {
+                RECT arrow = {item.right - Dpx(32), item.top, item.right - Dpx(8),
+                              item.bottom};
+                DrawTextLine(dc, L"›", arrow, g_app.font_large, COL_TEXT_MUTED,
+                             DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+            }
+            y += Dpx(56);
+        }
+    }
 }
 
 void UiPaint(HWND hwnd)
@@ -1109,6 +1208,15 @@ void UiHandleClick(int x, int y)
                 g_app.message_scroll = 1000000;
                 if (g_app.chats[i].unread > 0) {
                     g_app.chats[i].unread = 0;
+                }
+                /* update title */
+                {
+                    int unread = 0, j;
+                    wchar_t title[128];
+                    for (j = 0; j < g_app.chat_count; ++j) unread += g_app.chats[j].unread;
+                    if (unread > 0) swprintf(title, 128, L"Teams C+GDI  (%d)", unread);
+                    else wcscpy(title, L"Teams C+GDI");
+                    SetWindowTextW(g_app.hwnd, title);
                 }
                 InvalidateRect(g_app.hwnd, NULL, FALSE);
                 SetFocus(g_app.composer_edit);
@@ -1242,6 +1350,15 @@ void UiSendCurrentMessage(void)
 
     SetWindowTextW(g_app.composer_edit, L"");
     g_app.message_scroll = 1000000;
+    /* update title with unread count */
+    {
+        int unread = 0, i;
+        wchar_t title[128];
+        for (i = 0; i < g_app.chat_count; ++i) unread += g_app.chats[i].unread;
+        if (unread > 0) swprintf(title, 128, L"Teams C+GDI  (%d)", unread);
+        else wcscpy(title, L"Teams C+GDI");
+        SetWindowTextW(g_app.hwnd, title);
+    }
     InvalidateRect(g_app.hwnd, NULL, FALSE);
 }
 
